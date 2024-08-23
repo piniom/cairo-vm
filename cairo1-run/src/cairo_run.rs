@@ -27,11 +27,12 @@ use cairo_lang_sierra::{
 };
 use cairo_lang_sierra_to_casm::{
     compiler::{CairoProgram, SierraToCasmConfig},
-    metadata::calc_metadata_ap_change_only,
+    metadata::{calc_metadata, calc_metadata_ap_change_only, MetadataComputationConfig},
 };
 use cairo_lang_sierra_type_size::get_type_size_map;
 use cairo_lang_utils::{
-    bigint::BigIntAsHex, casts::IntoOrPanic, unordered_hash_map::UnorderedHashMap,
+    bigint::BigIntAsHex, casts::IntoOrPanic, ordered_hash_map::OrderedHashMap,
+    unordered_hash_map::UnorderedHashMap,
 };
 use cairo_vm::{
     hint_processor::cairo_1_hint_processor::hint_processor::Cairo1HintProcessor,
@@ -126,17 +127,28 @@ pub fn cairo_run_program(
     sierra_program: &SierraProgram,
     cairo_run_config: Cairo1RunConfig,
 ) -> Result<(CairoRunner, Vec<MaybeRelocatable>, Option<String>), Error> {
-    let metadata = calc_metadata_ap_change_only(sierra_program)
-        .map_err(|_| VirtualMachineError::Unexpected)?;
+    let config = MetadataComputationConfig {
+        function_set_costs: OrderedHashMap::default(),
+        linear_gas_solver: true,
+        linear_ap_change_solver: false,
+        skip_non_linear_solver_comparisons: false,
+        compute_runtime_costs: false,
+    };
+    let metadata =
+        calc_metadata(sierra_program, config).map_err(|_| VirtualMachineError::Unexpected)?;
+    // let metadata = calc_metadata_ap_change_only(sierra_program)
+    //     .map_err(|_| VirtualMachineError::Unexpected)?;
     let sierra_program_registry = ProgramRegistry::<CoreType, CoreLibfunc>::new(sierra_program)?;
     let type_sizes =
         get_type_size_map(sierra_program, &sierra_program_registry).unwrap_or_default();
     let config = SierraToCasmConfig {
-        gas_usage_check: false,
+        gas_usage_check: true,
         max_bytecode_size: usize::MAX,
     };
     let casm_program =
-        cairo_lang_sierra_to_casm::compiler::compile(sierra_program, &metadata, config)?;
+        cairo_lang_sierra_to_casm::compiler::compile(sierra_program, &metadata, config).unwrap();
+
+    std::fs::write("program.casm", &casm_program.to_string()).unwrap();
 
     let main_func = find_function(sierra_program, "::main")?;
 
@@ -192,9 +204,18 @@ pub fn cairo_run_program(
         entry_code.instructions.iter(),
         casm_program.instructions.iter(),
         libfunc_footer.iter(),
-    );
+    )
+    .collect::<Vec<_>>();
 
-    let (processor_hints, program_hints) = build_hints_vec(instructions.clone());
+    std::fs::write(
+        "full_program.casm",
+        &instructions.iter().map(|x| x.to_string()).join(";\n"),
+    )
+    .unwrap();
+
+    let (processor_hints, program_hints) = build_hints_vec(instructions.iter().map(|x| *x));
+
+    let instructions = instructions.iter();
 
     let mut hint_processor = Cairo1HintProcessor::new(
         &processor_hints,
@@ -207,6 +228,8 @@ pub fn cairo_run_program(
         .map(|x| Felt252::from(&x))
         .map(MaybeRelocatable::from)
         .collect();
+
+    dbg!("Before program creation");
 
     let program = if cairo_run_config.proof_mode {
         Program::new_for_proof(
@@ -252,13 +275,20 @@ pub fn cairo_run_program(
         cairo_run_config.trace_enabled,
     )?;
     let end = runner.initialize(cairo_run_config.proof_mode)?;
+
+    dbg!("Before load arguments");
+
     load_arguments(&mut runner, &cairo_run_config, main_func, initial_gas)?;
+
+    dbg!("After load arguments");
 
     // Run it until the end / infinite loop in proof_mode
     runner.run_until_pc(end, &mut hint_processor)?;
     if cairo_run_config.proof_mode {
+        dbg!("Before run for steps");
         runner.run_for_steps(1, &mut hint_processor)?;
     }
+    dbg!("Before end run");
 
     runner.end_run(false, false, &mut hint_processor)?;
 
