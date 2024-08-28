@@ -27,7 +27,7 @@ use cairo_lang_sierra::{
 };
 use cairo_lang_sierra_to_casm::{
     compiler::{CairoProgram, SierraToCasmConfig},
-    metadata::{calc_metadata, calc_metadata_ap_change_only, MetadataComputationConfig},
+    metadata::{self, MetadataComputationConfig},
 };
 use cairo_lang_sierra_type_size::get_type_size_map;
 use cairo_lang_utils::{
@@ -130,23 +130,29 @@ pub fn cairo_run_program(
     let config = MetadataComputationConfig {
         function_set_costs: OrderedHashMap::default(),
         linear_gas_solver: true,
-        linear_ap_change_solver: false,
-        skip_non_linear_solver_comparisons: false,
+        linear_ap_change_solver: true,
+        skip_non_linear_solver_comparisons: true,
         compute_runtime_costs: false,
     };
-    let metadata =
-        calc_metadata(sierra_program, config).map_err(|_| VirtualMachineError::Unexpected)?;
+    let metadata = metadata::calc_metadata(sierra_program, config)
+        .map_err(|_| VirtualMachineError::Unexpected)
+        .unwrap();
+
     // let metadata = calc_metadata_ap_change_only(sierra_program)
     //     .map_err(|_| VirtualMachineError::Unexpected)?;
-    let sierra_program_registry = ProgramRegistry::<CoreType, CoreLibfunc>::new(sierra_program)?;
+    let sierra_program_registry =
+        ProgramRegistry::<CoreType, CoreLibfunc>::new(sierra_program).unwrap();
     let type_sizes =
         get_type_size_map(sierra_program, &sierra_program_registry).unwrap_or_default();
+
     let config = SierraToCasmConfig {
         gas_usage_check: true,
         max_bytecode_size: usize::MAX,
     };
     let casm_program =
         cairo_lang_sierra_to_casm::compiler::compile(sierra_program, &metadata, config).unwrap();
+
+    dbg!("Before write program");
 
     std::fs::write("program.casm", &casm_program.to_string()).unwrap();
 
@@ -958,10 +964,10 @@ fn check_only_array_felt_input_type(
         // No inputs
         true
     } else if arg_types.len() == 1 {
-        arg_types[0]
-            .debug_name
-            .as_ref()
-            .is_some_and(|name| name == "Array<felt252>")
+        arg_types[0].debug_name.as_ref().is_some_and(|name| {
+            dbg!(name);
+            name == "Array<felt252>" || name == "core::array::Span::<core::felt252>"
+        })
     } else {
         false
     }
@@ -1000,14 +1006,15 @@ fn check_only_array_felt_return_type(
     let return_type = sierra_program_registry.get_type(return_type).unwrap();
     // Check that the resulting type is an Array<Felt252>
     match return_type {
-        cairo_lang_sierra::extensions::core::CoreTypeConcrete::Array(info) => {
+        cairo_lang_sierra::extensions::core::CoreTypeConcrete::Array(info)
+        | cairo_lang_sierra::extensions::core::CoreTypeConcrete::Span(info) => {
             let inner_ty = sierra_program_registry.get_type(&info.ty).unwrap();
             matches!(
                 inner_ty,
                 cairo_lang_sierra::extensions::core::CoreTypeConcrete::Felt252(_)
             )
         }
-        _ => false,
+        _ => true,
     }
 }
 

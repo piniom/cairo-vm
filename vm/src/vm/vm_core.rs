@@ -579,6 +579,7 @@ impl VirtualMachine {
         dst_op: &Option<MaybeRelocatable>,
         op1_op: &Option<MaybeRelocatable>,
     ) -> Result<MaybeRelocatable, VirtualMachineError> {
+        dbg!(instruction);
         let op0_op = match self.deduce_memory_cell(op0_addr)? {
             None => {
                 let op0;
