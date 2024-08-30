@@ -189,7 +189,9 @@ impl HintProcessorLogic for BuiltinHintProcessor {
     ) -> Result<(), HintError> {
         let hint_data = hint_data
             .downcast_ref::<HintProcessorData>()
-            .ok_or(HintError::WrongHintData)?;
+            .ok_or(HintError::WrongHintData)
+            .unwrap();
+        dbg!(&hint_data.code);
 
         if let Some(hint_func) = self.extra_hints.get(&hint_data.code) {
             return hint_func.0(
@@ -200,6 +202,7 @@ impl HintProcessorLogic for BuiltinHintProcessor {
                 constants,
             );
         }
+
         match &*hint_data.code {
             hint_code::ADD_SEGMENT => add_segment(vm),
             hint_code::IS_NN => is_nn(vm, &hint_data.ids_data, &hint_data.ap_tracking),
