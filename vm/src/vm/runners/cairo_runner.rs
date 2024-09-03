@@ -362,6 +362,16 @@ impl CairoRunner {
                     .push(ModBuiltinRunner::new_mul_mod(instance_def, included).into());
             }
         }
+
+        // if let Some(instance_def) = self.layout.builtins.mul_mod.as_ref() {
+        //     let included = program_builtins.remove(&BuiltinName::);
+        //     if included || self.is_proof_mode() {
+        //         self.vm
+        //             .builtin_runners
+        //             .push(ModBuiltinRunner::new_mul_mod(instance_def, included).into());
+        //     }
+        // }
+
         if !program_builtins.is_empty() && !allow_missing_builtins {
             return Err(RunnerError::NoBuiltinForInstance(Box::new((
                 program_builtins.iter().map(|n| **n).collect(),
@@ -650,26 +660,30 @@ impl CairoRunner {
             .hints_ranges
             .clone();
         #[cfg(feature = "test_utils")]
-        self.vm.execute_before_first_step(&hint_data)?;
+        self.vm.execute_before_first_step(&hint_data).unwrap();
         while self.vm.get_pc() != address && !hint_processor.consumed() {
-            self.vm.step(
-                hint_processor,
-                &mut self.exec_scopes,
-                #[cfg(feature = "extensive_hints")]
-                &mut hint_data,
-                #[cfg(not(feature = "extensive_hints"))]
-                self.program
-                    .shared_program_data
-                    .hints_collection
-                    .get_hint_range_for_pc(self.vm.get_pc().offset)
-                    .and_then(|range| {
-                        range.and_then(|(start, length)| hint_data.get(start..start + length.get()))
-                    })
-                    .unwrap_or(&[]),
-                #[cfg(feature = "extensive_hints")]
-                &mut hint_ranges,
-                &self.program.constants,
-            )?;
+            self.vm
+                .step(
+                    hint_processor,
+                    &mut self.exec_scopes,
+                    #[cfg(feature = "extensive_hints")]
+                    &mut hint_data,
+                    #[cfg(not(feature = "extensive_hints"))]
+                    self.program
+                        .shared_program_data
+                        .hints_collection
+                        .get_hint_range_for_pc(self.vm.get_pc().offset)
+                        .and_then(|range| {
+                            range.and_then(|(start, length)| {
+                                hint_data.get(start..start + length.get())
+                            })
+                        })
+                        .unwrap_or(&[]),
+                    #[cfg(feature = "extensive_hints")]
+                    &mut hint_ranges,
+                    &self.program.constants,
+                )
+                .unwrap();
 
             hint_processor.consume_step();
         }

@@ -136,8 +136,9 @@ pub fn cairo_run_program(
         max_bytecode_size: usize::MAX,
     };
     let casm_program =
-        cairo_lang_sierra_to_casm::compiler::compile(sierra_program, &metadata, config)?;
+        cairo_lang_sierra_to_casm::compiler::compile(sierra_program, &metadata, config).unwrap();
 
+    // let main_func = find_function(sierra_program, "::__wrapper__HelloStarknetImpl__get_balance")?;
     let main_func = find_function(sierra_program, "::main")?;
 
     let initial_gas = 9999999999999_usize;
@@ -176,7 +177,8 @@ pub fn cairo_run_program(
         &type_sizes,
         main_func,
         &cairo_run_config,
-    )?;
+    )
+    .unwrap();
 
     let return_type_size = return_type_id
         .and_then(|id| type_sizes.get(id).cloned())
@@ -192,9 +194,20 @@ pub fn cairo_run_program(
         entry_code.instructions.iter(),
         casm_program.instructions.iter(),
         libfunc_footer.iter(),
-    );
+    )
+    .collect::<Vec<&Instruction>>();
 
-    let (processor_hints, program_hints) = build_hints_vec(instructions.clone());
+    std::fs::write(
+        "./program.casm",
+        casm_program
+            .instructions
+            .iter()
+            .map(Instruction::to_string)
+            .join("\n"),
+    )
+    .unwrap();
+
+    let (processor_hints, program_hints) = build_hints_vec(instructions.clone().into_iter());
 
     let mut hint_processor = Cairo1HintProcessor::new(
         &processor_hints,
@@ -203,6 +216,7 @@ pub fn cairo_run_program(
     );
 
     let data: Vec<MaybeRelocatable> = instructions
+        .iter()
         .flat_map(|inst| inst.assemble().encode())
         .map(|x| Felt252::from(&x))
         .map(MaybeRelocatable::from)
@@ -223,7 +237,8 @@ pub fn cairo_run_program(
             HashMap::new(),
             vec![],
             None,
-        )?
+        )
+        .unwrap()
     } else {
         Program::new(
             builtins.clone(),
@@ -236,7 +251,8 @@ pub fn cairo_run_program(
             HashMap::new(),
             vec![],
             None,
-        )?
+        )
+        .unwrap()
     };
 
     let runner_mode = if cairo_run_config.proof_mode {
@@ -250,17 +266,18 @@ pub fn cairo_run_program(
         cairo_run_config.layout,
         runner_mode,
         cairo_run_config.trace_enabled,
-    )?;
-    let end = runner.initialize(cairo_run_config.proof_mode)?;
-    load_arguments(&mut runner, &cairo_run_config, main_func, initial_gas)?;
+    )
+    .unwrap();
+    let end = runner.initialize(cairo_run_config.proof_mode).unwrap();
+    load_arguments(&mut runner, &cairo_run_config, main_func, initial_gas).unwrap();
 
     // Run it until the end / infinite loop in proof_mode
-    runner.run_until_pc(end, &mut hint_processor)?;
+    runner.run_until_pc(end, &mut hint_processor).unwrap();
     if cairo_run_config.proof_mode {
-        runner.run_for_steps(1, &mut hint_processor)?;
+        runner.run_for_steps(1, &mut hint_processor).unwrap();
     }
 
-    runner.end_run(false, false, &mut hint_processor)?;
+    runner.end_run(false, false, &mut hint_processor).unwrap();
 
     let result_inner_type_size =
         result_inner_type_size(return_type_id, &sierra_program_registry, &type_sizes);
@@ -271,7 +288,8 @@ pub fn cairo_run_program(
         &runner.vm,
         builtin_count,
         cairo_run_config.copy_to_output(),
-    )?;
+    )
+    .unwrap();
 
     let serialized_output = if cairo_run_config.serialize_output {
         if cairo_run_config.copy_to_output() {
@@ -301,35 +319,39 @@ pub fn cairo_run_program(
     if cairo_run_config.finalize_builtins {
         if cairo_run_config.copy_to_output() {
             // Set stop pointer for each builtin
-            runner.vm.builtins_final_stack_from_stack_pointer_dict(
-                &builtins
-                    .iter()
-                    .enumerate()
-                    .map(|(i, builtin)| {
-                        (
-                            *builtin,
-                            (runner.vm.get_ap() - (builtins.len() - 1 - i)).unwrap(),
-                        )
-                    })
-                    .collect(),
-                false,
-            )?;
+            runner
+                .vm
+                .builtins_final_stack_from_stack_pointer_dict(
+                    &builtins
+                        .iter()
+                        .enumerate()
+                        .map(|(i, builtin)| {
+                            (
+                                *builtin,
+                                (runner.vm.get_ap() - (builtins.len() - 1 - i)).unwrap(),
+                            )
+                        })
+                        .collect(),
+                    false,
+                )
+                .unwrap();
         } else {
             finalize_builtins(
                 &main_func.signature.ret_types,
                 &type_sizes,
                 &mut runner.vm,
                 builtin_count,
-            )?;
+            )
+            .unwrap();
         }
 
         // Build execution public memory
         if cairo_run_config.proof_mode {
-            runner.finalize_segments()?;
+            runner.finalize_segments().unwrap();
         }
     }
 
-    runner.relocate(true)?;
+    runner.relocate(true).unwrap();
 
     Ok((runner, return_values, serialized_output))
 }
@@ -486,10 +508,15 @@ fn load_arguments(
     }
     // Load initial gas if GasBuiltin is present
     if got_gas_builtin {
-        runner.vm.insert_value(
-            (runner.vm.get_ap() + ap_offset).map_err(VirtualMachineError::Math)?,
-            Felt252::from(initial_gas),
-        )?;
+        runner
+            .vm
+            .insert_value(
+                (runner.vm.get_ap() + ap_offset)
+                    .map_err(VirtualMachineError::Math)
+                    .unwrap(),
+                Felt252::from(initial_gas),
+            )
+            .unwrap();
         ap_offset += 1;
     }
     for arg in cairo_run_config.args {

@@ -348,7 +348,7 @@ impl VirtualMachine {
             Opcode::AssertEq => match &operands.res {
                 None => Err(VirtualMachineError::UnconstrainedResAssertEq),
                 Some(res) if res != &operands.dst => Err(VirtualMachineError::DiffAssertValues(
-                    Box::new((operands.dst.clone(), res.clone())),
+                    Box::new((dbg!(operands).dst.clone(), res.clone())),
                 )),
                 _ => Ok(()),
             },
@@ -403,9 +403,10 @@ impl VirtualMachine {
 
     fn run_instruction(&mut self, instruction: &Instruction) -> Result<(), VirtualMachineError> {
         let (operands, operands_addresses, deduced_operands) =
-            self.compute_operands(instruction)?;
-        self.insert_deduced_operands(deduced_operands, &operands, &operands_addresses)?;
-        self.opcode_assertions(instruction, &operands)?;
+            self.compute_operands(instruction).unwrap();
+        self.insert_deduced_operands(deduced_operands, &operands, &operands_addresses)
+            .unwrap();
+        self.opcode_assertions(instruction, &operands).unwrap();
 
         if let Some(ref mut trace) = &mut self.trace {
             trace.push(TraceEntry {
@@ -438,7 +439,7 @@ impl VirtualMachine {
             .memory
             .mark_as_accessed(operands_addresses.op1_addr);
 
-        self.update_registers(instruction, operands)?;
+        self.update_registers(instruction, operands).unwrap();
         self.current_step += 1;
 
         Ok(())
@@ -462,10 +463,10 @@ impl VirtualMachine {
         hint_datas: &[Box<dyn Any>],
         constants: &HashMap<String, Felt252>,
     ) -> Result<(), VirtualMachineError> {
-        for (hint_index, hint_data) in hint_datas.iter().enumerate() {
+        for (_hint_index, hint_data) in hint_datas.iter().enumerate() {
             hint_processor
                 .execute_hint(self, exec_scopes, hint_data, constants)
-                .map_err(|err| VirtualMachineError::Hint(Box::new((hint_index, err))))?
+                .unwrap();
         }
         Ok(())
     }
@@ -511,7 +512,7 @@ impl VirtualMachine {
             let pc = self.run_context.pc.offset;
 
             if self.segments.memory.data[0].len() <= pc {
-                return Err(MemoryError::UnknownMemoryCell(Box::new((0, pc).into())))?;
+                return Err(MemoryError::UnknownMemoryCell(Box::new((0, pc).into()))).unwrap();
             }
 
             let mut inst_cache = core::mem::take(&mut self.instruction_cache);
@@ -519,12 +520,12 @@ impl VirtualMachine {
 
             let instruction = inst_cache.get_mut(pc).unwrap();
             if instruction.is_none() {
-                *instruction = Some(self.decode_current_instruction()?);
+                *instruction = Some(self.decode_current_instruction().unwrap());
             }
             let instruction = instruction.as_ref().unwrap();
 
             if !self.skip_instruction_execution {
-                self.run_instruction(instruction)?;
+                self.run_instruction(instruction).unwrap();
             } else {
                 self.run_context.pc += instruction.size();
                 self.skip_instruction_execution = false;
@@ -532,10 +533,10 @@ impl VirtualMachine {
             self.instruction_cache = inst_cache;
         } else {
             // Run instructions from programs loaded in other segments, without instruction cache
-            let instruction = self.decode_current_instruction()?;
+            let instruction = self.decode_current_instruction().unwrap();
 
             if !self.skip_instruction_execution {
-                self.run_instruction(&instruction)?;
+                self.run_instruction(&instruction).unwrap();
             } else {
                 self.run_context.pc += instruction.size();
                 self.skip_instruction_execution = false;
@@ -560,13 +561,16 @@ impl VirtualMachine {
             #[cfg(feature = "extensive_hints")]
             hint_ranges,
             constants,
-        )?;
+        )
+        .unwrap();
 
         #[cfg(feature = "test_utils")]
-        self.execute_pre_step_instruction(hint_processor, exec_scopes, hint_datas, constants)?;
-        self.step_instruction()?;
+        self.execute_pre_step_instruction(hint_processor, exec_scopes, hint_datas, constants)
+            .unwrap();
+        self.step_instruction().unwrap();
         #[cfg(feature = "test_utils")]
-        self.execute_post_step_instruction(hint_processor, exec_scopes, hint_datas, constants)?;
+        self.execute_post_step_instruction(hint_processor, exec_scopes, hint_datas, constants)
+            .unwrap();
 
         Ok(())
     }
@@ -601,20 +605,19 @@ impl VirtualMachine {
         dst_op: &Option<MaybeRelocatable>,
         op0: &MaybeRelocatable,
     ) -> Result<MaybeRelocatable, VirtualMachineError> {
-        let op1_op = match self.deduce_memory_cell(op1_addr)? {
+        dbg!(&instruction);
+        let op1_op = match self.deduce_memory_cell(op1_addr).unwrap() {
             None => {
                 let (op1, deduced_res) =
-                    self.deduce_op1(instruction, dst_op.as_ref(), Some(op0.clone()))?;
+                    self.deduce_op1(instruction, dst_op.as_ref(), Some(op0.clone())).unwrap();
                 if res.is_none() {
                     *res = deduced_res
                 }
-                op1
+                op1.unwrap()
             }
-            deduced_memory_cell => deduced_memory_cell,
+            deduced_memory_cell => deduced_memory_cell.unwrap(),
         };
-        let op1 = op1_op.ok_or_else(|| {
-            VirtualMachineError::FailedToComputeOperands(Box::new(("op1".to_string(), op1_addr)))
-        })?;
+        let op1 = op1_op;
         Ok(op1)
     }
 
@@ -625,15 +628,15 @@ impl VirtualMachine {
         instruction: &Instruction,
     ) -> Result<(Operands, OperandsAddresses, DeducedOperands), VirtualMachineError> {
         //Get operands from memory
-        let dst_addr = self.run_context.compute_dst_addr(instruction)?;
+        let dst_addr = self.run_context.compute_dst_addr(instruction).unwrap();
         let dst_op = self.segments.memory.get(&dst_addr).map(Cow::into_owned);
 
-        let op0_addr = self.run_context.compute_op0_addr(instruction)?;
+        let op0_addr = self.run_context.compute_op0_addr(instruction).unwrap();
         let op0_op = self.segments.memory.get(&op0_addr).map(Cow::into_owned);
 
         let op1_addr = self
             .run_context
-            .compute_op1_addr(instruction, op0_op.as_ref())?;
+            .compute_op1_addr(instruction, op0_op.as_ref()).unwrap();
         let op1_op = self.segments.memory.get(&op1_addr).map(Cow::into_owned);
 
         let mut res: Option<MaybeRelocatable> = None;
@@ -645,7 +648,7 @@ impl VirtualMachine {
             Some(op0) => op0,
             None => {
                 deduced_operands.set_op0(true);
-                self.compute_op0_deductions(op0_addr, &mut res, instruction, &dst_op, &op1_op)?
+                self.compute_op0_deductions(op0_addr, &mut res, instruction, &dst_op, &op1_op).unwrap()
             }
         };
 
@@ -654,13 +657,13 @@ impl VirtualMachine {
             Some(op1) => op1,
             None => {
                 deduced_operands.set_op1(true);
-                self.compute_op1_deductions(op1_addr, &mut res, instruction, &dst_op, &op0)?
+                self.compute_op1_deductions(op1_addr, &mut res, instruction, &dst_op, &op0).unwrap()
             }
         };
 
         //Compute res if it wasnt previously deduced
         if res.is_none() {
-            res = self.compute_res(instruction, &op0, &op1)?;
+            res = self.compute_res(instruction, &op0, &op1).unwrap();
         }
 
         //Deduce dst if it wasnt previously computed
@@ -668,7 +671,7 @@ impl VirtualMachine {
             Some(dst) => dst,
             None => {
                 deduced_operands.set_dst(true);
-                self.deduce_dst(instruction, &res)?
+                self.deduce_dst(instruction, &res).unwrap()
             }
         };
         let accessed_addresses = OperandsAddresses {
