@@ -150,6 +150,7 @@ impl Add<&Felt252> for Relocatable {
         let new_offset = (self.offset as u64 + other)
             .and_then(|x| x.to_usize())
             .ok_or_else(|| {
+                dbg!(self, other);
                 MathError::RelocatableAddFelt252OffsetExceeded(Box::new((self, *other)))
             })?;
         Ok((self.segment_index, new_offset).into())

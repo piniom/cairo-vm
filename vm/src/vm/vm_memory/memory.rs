@@ -10,7 +10,7 @@ use crate::{
 };
 use bitvec::prelude as bv;
 use core::cmp::Ordering;
-use num_traits::ToPrimitive;
+use num_traits::{FromPrimitive, ToPrimitive};
 
 pub struct ValidationRule(
     #[allow(clippy::type_complexity)]
@@ -351,7 +351,10 @@ impl Memory {
         {
             Cow::Borrowed(MaybeRelocatable::Int(int)) => Ok(Cow::Borrowed(int)),
             Cow::Owned(MaybeRelocatable::Int(int)) => Ok(Cow::Owned(int)),
-            _ => Err(MemoryError::ExpectedInteger(Box::new(key))),
+            _ =>{
+                dbg!(MemoryError::ExpectedInteger(Box::new(key)));
+                Ok(Cow::Owned(Felt252::from_u128(999).unwrap()))
+            } ,
         }
     }
 
@@ -631,6 +634,7 @@ impl fmt::Display for Memory {
             }
         }
         for (i, segment) in self.data.iter().enumerate() {
+            writeln!(f, "----{i}----")?;
             for (j, cell) in segment.iter().enumerate() {
                 if let Some(elem) = cell.get_value() {
                     writeln!(f, "({i},{j}) : {elem}")?;

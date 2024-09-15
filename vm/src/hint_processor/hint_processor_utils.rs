@@ -70,7 +70,7 @@ pub fn get_maybe_relocatable_from_reference(
         &hint_reference.ap_tracking_data,
         ap_tracking,
     )?;
-    let mut val = offset1.add(&offset2).ok()?;
+    let mut val = offset1.add(&offset2).ok().unwrap();
     if hint_reference.inner_dereference && hint_reference.outer_dereference {
         val = vm.get_maybe(&val)?;
     }
@@ -98,7 +98,7 @@ pub fn compute_addr_from_reference(
         &hint_reference.ap_tracking_data,
         ap_tracking,
     )?;
-    let mut val = offset1.add(&offset2).ok()?;
+    let mut val = offset1.add(&offset2).ok().unwrap();
     if hint_reference.inner_dereference {
         val = vm.get_maybe(&val)?;
     };

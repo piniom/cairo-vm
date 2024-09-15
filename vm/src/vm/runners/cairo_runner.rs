@@ -245,6 +245,7 @@ impl CairoRunner {
     pub fn initialize_builtins(&mut self, allow_missing_builtins: bool) -> Result<(), RunnerError> {
         let builtin_ordered_list = vec![
             BuiltinName::output,
+            BuiltinName::system,
             BuiltinName::pedersen,
             BuiltinName::range_check,
             BuiltinName::ecdsa,
@@ -256,6 +257,7 @@ impl CairoRunner {
             BuiltinName::add_mod,
             BuiltinName::mul_mod,
         ];
+        dbg!(&self.program.builtins);
         if !is_subsequence(&self.program.builtins, &builtin_ordered_list) {
             return Err(RunnerError::DisorderedBuiltins);
         };
@@ -420,6 +422,7 @@ impl CairoRunner {
                     ModBuiltinRunner::new_mul_mod(&ModInstanceDef::new(Some(1), 1, 96), true)
                         .into(),
                 ),
+                BuiltinName::system => todo!()
             }
         }
 

@@ -40,7 +40,7 @@ use cairo_vm::{
     serde::deserialize_program::{ApTracking, FlowTrackingData, HintParams, ReferenceManager},
     types::{
         builtin_name::BuiltinName, layout_name::LayoutName, program::Program,
-        relocatable::MaybeRelocatable,
+        relocatable::{MaybeRelocatable, Relocatable},
     },
     vm::{
         errors::{runner_errors::RunnerError, vm_errors::VirtualMachineError},
@@ -52,7 +52,7 @@ use cairo_vm::{
 use itertools::{chain, Itertools};
 use num_bigint::{BigInt, Sign};
 use num_traits::{cast::ToPrimitive, Zero};
-use std::{collections::HashMap, iter::Peekable};
+use std::{collections::HashMap, fmt::format, iter::Peekable};
 
 /// Representation of a cairo argument
 /// Can consist of a single Felt or an array of Felts
@@ -289,7 +289,10 @@ pub fn cairo_run_program(
     dbg!("After load arguments");
 
     // Run it until the end / infinite loop in proof_mode
-    runner.run_until_pc(end, &mut hint_processor)?;
+    if let Err(e) = runner.run_until_pc(end, &mut hint_processor) {
+        std::fs::write("memory.txt", format!("{}", runner.vm.segments)).unwrap();
+        Err(e)?
+    }
     if cairo_run_config.proof_mode {
         dbg!("Before run for steps");
         runner.run_for_steps(1, &mut hint_processor)?;
@@ -528,6 +531,8 @@ fn load_arguments(
         )?;
         ap_offset += 1;
     }
+    // runner.vm.insert_value(Relocatable{segment_index: 4, offset: 0}, MaybeRelocatable::Int(98765456.into())).unwrap();
+    // runner.vm.insert_value(Relocatable{segment_index: 1, offset: 8}, MaybeRelocatable::Int(987654567.into())).unwrap();
     for arg in cairo_run_config.args {
         match arg {
             FuncArg::Array(args) => {
@@ -584,10 +589,12 @@ fn create_entry_code(
     // The builtins in the formatting expected by the runner.
     let (builtins, builtin_offset) =
         get_function_builtins(&signature.param_types, copy_to_output_builtin);
+    dbg!(&builtins);
     let mut ctx = CasmBuilder::default();
     // Getting a variable pointing to the location of each builtin.
     let mut builtin_vars =
         HashMap::<GenericTypeId, Var>::from_iter(builtin_offset.iter().map(|(id, offset)| {
+            dbg!(id, offset);
             (
                 id.clone(),
                 ctx.add_var(CellExpression::Deref(deref!([fp - offset]))),
@@ -626,17 +633,13 @@ fn create_entry_code(
     };
 
     for ty in &signature.param_types {
+        dbg!(ty);
         let info = get_info(sierra_program_registry, ty)
             .ok_or_else(|| Error::NoInfoForType(ty.clone()))?;
         let generic_ty = &info.long_id.generic_id;
         if let Some(var) = builtin_vars.get(generic_ty).cloned() {
+            dbg!(var);
             casm_build_extend!(ctx, tempvar _builtin = var;);
-        } else if generic_ty == &SystemType::ID {
-            casm_build_extend! {ctx,
-                tempvar system;
-                hint AllocSegment {} into {dst: system};
-                ap += 1;
-            };
         } else if generic_ty == &GasBuiltinType::ID {
             // We already loaded the inital gas so we just advance AP
             casm_build_extend! {ctx,
@@ -693,6 +696,7 @@ fn create_entry_code(
         BuiltinName::ec_op => builtin_vars[&EcOpType::ID],
         BuiltinName::poseidon => builtin_vars[&PoseidonType::ID],
         BuiltinName::segment_arena => builtin_vars[&SegmentArenaType::ID],
+        BuiltinName::system => builtin_vars[&SystemType::ID],
         _ => unreachable!(),
     };
     if copy_to_output_builtin {
@@ -928,6 +932,7 @@ fn get_function_builtins(
         ("Bitwise", BuiltinName::bitwise, BitwiseType::ID),
         ("RangeCheck", BuiltinName::range_check, RangeCheckType::ID),
         ("Pedersen", BuiltinName::pedersen, PedersenType::ID),
+        ("System", BuiltinName::system, SystemType::ID)
     ] {
         if params
             .iter()
@@ -951,6 +956,7 @@ fn check_only_array_felt_input_type(
     params: &[ConcreteTypeId],
     sierra_program_registry: &ProgramRegistry<CoreType, CoreLibfunc>,
 ) -> bool {
+    dbg!(params);
     // Filter implicit arguments (builtins, gas)
     let arg_types = params
         .iter()
@@ -1180,6 +1186,7 @@ fn finalize_builtins(
                 "Pedersen" => BuiltinName::pedersen,
                 "Output" => BuiltinName::output,
                 "Ecdsa" => BuiltinName::ecdsa,
+                "System" => BuiltinName::system,
                 _ => {
                     stack_pointer.offset += size as usize;
                     continue;

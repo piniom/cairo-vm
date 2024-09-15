@@ -362,10 +362,12 @@ impl VirtualMachine {
                 };
 
                 if MaybeRelocatable::from(self.run_context.get_fp()) != operands.dst {
-                    return Err(VirtualMachineError::CantWriteReturnFp(Box::new((
+                    // dbg!(instruction, operands);
+                    dbg!(VirtualMachineError::CantWriteReturnFp(Box::new((
                         operands.dst.clone(),
                         MaybeRelocatable::from(self.run_context.get_fp()),
                     ))));
+                    // TODO:
                 };
                 Ok(())
             }
@@ -402,8 +404,10 @@ impl VirtualMachine {
     }
 
     fn run_instruction(&mut self, instruction: &Instruction) -> Result<(), VirtualMachineError> {
+        // dbg!(instruction);
         let (operands, operands_addresses, deduced_operands) =
             self.compute_operands(instruction)?;
+        // dbg!(&operands);
         self.insert_deduced_operands(deduced_operands, &operands, &operands_addresses)?;
         self.opcode_assertions(instruction, &operands)?;
 
@@ -519,9 +523,10 @@ impl VirtualMachine {
 
             let instruction = inst_cache.get_mut(pc).unwrap();
             if instruction.is_none() {
-                *instruction = Some(self.decode_current_instruction()?);
+                *instruction = Some(self.decode_current_instruction().unwrap());
             }
             let instruction = instruction.as_ref().unwrap();
+            dbg!(&instruction);
 
             if !self.skip_instruction_execution {
                 self.run_instruction(instruction)?;
@@ -533,7 +538,7 @@ impl VirtualMachine {
         } else {
             // Run instructions from programs loaded in other segments, without instruction cache
             let instruction = self.decode_current_instruction()?;
-
+            dbg!(&instruction);
             if !self.skip_instruction_execution {
                 self.run_instruction(&instruction)?;
             } else {
@@ -560,13 +565,13 @@ impl VirtualMachine {
             #[cfg(feature = "extensive_hints")]
             hint_ranges,
             constants,
-        )?;
+        ).unwrap();
 
         #[cfg(feature = "test_utils")]
-        self.execute_pre_step_instruction(hint_processor, exec_scopes, hint_datas, constants)?;
+        self.execute_pre_step_instruction(hint_processor, exec_scopes, hint_datas, constants).unwrap();
         self.step_instruction()?;
         #[cfg(feature = "test_utils")]
-        self.execute_post_step_instruction(hint_processor, exec_scopes, hint_datas, constants)?;
+        self.execute_post_step_instruction(hint_processor, exec_scopes, hint_datas, constants).unwrap();
 
         Ok(())
     }
@@ -579,7 +584,7 @@ impl VirtualMachine {
         dst_op: &Option<MaybeRelocatable>,
         op1_op: &Option<MaybeRelocatable>,
     ) -> Result<MaybeRelocatable, VirtualMachineError> {
-        dbg!(instruction);
+        // dbg!(instruction, op0_addr, dst_op, op1_op);
         let op0_op = match self.deduce_memory_cell(op0_addr)? {
             None => {
                 let op0;
@@ -614,8 +619,9 @@ impl VirtualMachine {
             deduced_memory_cell => deduced_memory_cell,
         };
         let op1 = op1_op.ok_or_else(|| {
-            VirtualMachineError::FailedToComputeOperands(Box::new(("op1".to_string(), op1_addr)))
-        })?;
+            // TODO:
+            dbg!(VirtualMachineError::FailedToComputeOperands(Box::new(("op1".to_string(), op1_addr))))
+        }).unwrap_or(MaybeRelocatable::RelocatableValue(Relocatable{segment_index: 5, offset: 0}));
         Ok(op1)
     }
 
