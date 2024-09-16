@@ -126,118 +126,18 @@ pub fn cairo_run_program(
     sierra_program: &SierraProgram,
     cairo_run_config: Cairo1RunConfig,
 ) -> Result<(CairoRunner, Vec<MaybeRelocatable>, Option<String>), Error> {
-    let metadata = calc_metadata_ap_change_only(sierra_program)
-        .map_err(|_| VirtualMachineError::Unexpected)?;
-    let sierra_program_registry = ProgramRegistry::<CoreType, CoreLibfunc>::new(sierra_program)?;
-    let type_sizes =
-        get_type_size_map(sierra_program, &sierra_program_registry).unwrap_or_default();
-    let config = SierraToCasmConfig {
-        gas_usage_check: false,
-        max_bytecode_size: usize::MAX,
-    };
-    let casm_program =
-        cairo_lang_sierra_to_casm::compiler::compile(sierra_program, &metadata, config)?;
-
-    let main_func = find_function(sierra_program, "::main")?;
-
-    let initial_gas = 9999999999999_usize;
-
-    // Fetch return type data
-    let return_type_id = match main_func.signature.ret_types.last() {
-        // We need to check if the last return type is indeed the function's return value and not an implicit return value
-        return_type @ Some(concrete_ty)
-            if get_info(&sierra_program_registry, concrete_ty)
-                .is_some_and(|info| !is_implicit_generic_id(&info.long_id.generic_id)) =>
-        {
-            return_type
-        }
-        _ => None,
-    };
-
-    if cairo_run_config.copy_to_output()
-        && !check_only_array_felt_input_type(
-            &main_func.signature.param_types,
-            &sierra_program_registry,
-        )
-    {
-        return Err(Error::IlegalInputValue);
-    };
-    if cairo_run_config.copy_to_output()
-        && !check_only_array_felt_return_type(return_type_id, &sierra_program_registry)
-    {
-        return Err(Error::IlegalReturnValue);
-    };
-
-    // Modified entry code to be compatible with custom cairo1 Proof Mode.
-    // This adds code that's needed for dictionaries, adjusts ap for builtin pointers, adds initial gas for the gas builtin if needed, and sets up other necessary code for cairo1
-    let (entry_code, builtins) = create_entry_code(
-        &sierra_program_registry,
-        &casm_program,
-        &type_sizes,
+    let (
+        sierra_program_registry,
+        type_sizes,
         main_func,
-        &cairo_run_config,
-    )?;
-
-    let return_type_size = return_type_id
-        .and_then(|id| type_sizes.get(id).cloned())
-        .unwrap_or_default();
-
-    // This footer is used by lib funcs
-    let libfunc_footer = create_code_footer();
-    let builtin_count: i16 = builtins.len().into_or_panic();
-
-    // This is the program we are actually running/proving
-    // With (embedded proof mode), cairo1 header and the libfunc footer
-    let instructions = chain!(
-        entry_code.instructions.iter(),
-        casm_program.instructions.iter(),
-        libfunc_footer.iter(),
-    );
-
-    let (processor_hints, program_hints) = build_hints_vec(instructions.clone());
-
-    let mut hint_processor = Cairo1HintProcessor::new(
-        &processor_hints,
-        RunResources::default(),
-        cairo_run_config.copy_to_output(),
-    );
-
-    let data: Vec<MaybeRelocatable> = instructions
-        .flat_map(|inst| inst.assemble().encode())
-        .map(|x| Felt252::from(&x))
-        .map(MaybeRelocatable::from)
-        .collect();
-
-    let program = if cairo_run_config.proof_mode {
-        Program::new_for_proof(
-            builtins.clone(),
-            data,
-            0,
-            // Proof mode is on top
-            // `jmp rel 0` is the last line of the entry code.
-            entry_code.current_code_offset - 2,
-            program_hints,
-            ReferenceManager {
-                references: Vec::new(),
-            },
-            HashMap::new(),
-            vec![],
-            None,
-        )?
-    } else {
-        Program::new(
-            builtins.clone(),
-            data,
-            Some(0),
-            program_hints,
-            ReferenceManager {
-                references: Vec::new(),
-            },
-            HashMap::new(),
-            vec![],
-            None,
-        )?
-    };
+        initial_gas,
+        return_type_id,
+        builtins,
+        return_type_size,
+        builtin_count,
+        mut hint_processor,
+        program,
+    ) = compile_program(sierra_program, &cairo_run_config)?;
 
     let runner_mode = if cairo_run_config.proof_mode {
         RunnerMode::ProofModeCairo1
@@ -332,6 +232,132 @@ pub fn cairo_run_program(
     runner.relocate(true)?;
 
     Ok((runner, return_values, serialized_output))
+}
+
+pub fn compile_program<'a>(
+    sierra_program: &'a SierraProgram,
+    cairo_run_config: &Cairo1RunConfig<'_>,
+) -> Result<
+    (
+        ProgramRegistry<CoreType, CoreLibfunc>,
+        UnorderedHashMap<ConcreteTypeId, i16>,
+        &'a cairo_lang_sierra::program::GenFunction<cairo_lang_sierra::program::StatementIdx>,
+        usize,
+        Option<&'a ConcreteTypeId>,
+        Vec<BuiltinName>,
+        i16,
+        i16,
+        Cairo1HintProcessor,
+        Program,
+    ),
+    Error,
+> {
+    let metadata = calc_metadata_ap_change_only(sierra_program)
+        .map_err(|_| VirtualMachineError::Unexpected)?;
+    let sierra_program_registry = ProgramRegistry::<CoreType, CoreLibfunc>::new(sierra_program)?;
+    let type_sizes =
+        get_type_size_map(sierra_program, &sierra_program_registry).unwrap_or_default();
+    let config = SierraToCasmConfig {
+        gas_usage_check: false,
+        max_bytecode_size: usize::MAX,
+    };
+    let casm_program =
+        cairo_lang_sierra_to_casm::compiler::compile(sierra_program, &metadata, config)?;
+    let main_func = find_function(sierra_program, "::main")?;
+    let initial_gas = 9999999999999_usize;
+    let return_type_id = match main_func.signature.ret_types.last() {
+        // We need to check if the last return type is indeed the function's return value and not an implicit return value
+        return_type @ Some(concrete_ty)
+            if get_info(&sierra_program_registry, concrete_ty)
+                .is_some_and(|info| !is_implicit_generic_id(&info.long_id.generic_id)) =>
+        {
+            return_type
+        }
+        _ => None,
+    };
+    if cairo_run_config.copy_to_output()
+        && !check_only_array_felt_input_type(
+            &main_func.signature.param_types,
+            &sierra_program_registry,
+        )
+    {
+        return Err(Error::IlegalInputValue);
+    };
+    if cairo_run_config.copy_to_output()
+        && !check_only_array_felt_return_type(return_type_id, &sierra_program_registry)
+    {
+        return Err(Error::IlegalReturnValue);
+    };
+    let (entry_code, builtins) = create_entry_code(
+        &sierra_program_registry,
+        &casm_program,
+        &type_sizes,
+        main_func,
+        cairo_run_config,
+    )?;
+    let return_type_size = return_type_id
+        .and_then(|id| type_sizes.get(id).cloned())
+        .unwrap_or_default();
+    let libfunc_footer = create_code_footer();
+    let builtin_count: i16 = builtins.len().into_or_panic();
+    let instructions = chain!(
+        entry_code.instructions.iter(),
+        casm_program.instructions.iter(),
+        libfunc_footer.iter(),
+    );
+    let (processor_hints, program_hints) = build_hints_vec(instructions.clone());
+    let hint_processor = Cairo1HintProcessor::new(
+        &processor_hints,
+        RunResources::default(),
+        cairo_run_config.copy_to_output(),
+    );
+    let data: Vec<MaybeRelocatable> = instructions
+        .flat_map(|inst| inst.assemble().encode())
+        .map(|x| Felt252::from(&x))
+        .map(MaybeRelocatable::from)
+        .collect();
+    let program = if cairo_run_config.proof_mode {
+        Program::new_for_proof(
+            builtins.clone(),
+            data,
+            0,
+            // Proof mode is on top
+            // `jmp rel 0` is the last line of the entry code.
+            entry_code.current_code_offset - 2,
+            program_hints,
+            ReferenceManager {
+                references: Vec::new(),
+            },
+            HashMap::new(),
+            vec![],
+            None,
+        )?
+    } else {
+        Program::new(
+            builtins.clone(),
+            data,
+            Some(0),
+            program_hints,
+            ReferenceManager {
+                references: Vec::new(),
+            },
+            HashMap::new(),
+            vec![],
+            None,
+        )?
+    };
+    Ok((
+        sierra_program_registry,
+        type_sizes,
+        main_func,
+        initial_gas,
+        return_type_id,
+        builtins,
+        return_type_size,
+        builtin_count,
+        hint_processor,
+        program,
+    ))
 }
 
 #[allow(clippy::type_complexity)]
