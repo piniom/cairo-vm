@@ -1,3 +1,4 @@
+use super::dojo_instance_def::DojoInstanceDef;
 use super::mod_instance_def::ModInstanceDef;
 use super::{
     bitwise_instance_def::BitwiseInstanceDef, ec_op_instance_def::EcOpInstanceDef,
@@ -23,6 +24,7 @@ pub(crate) struct BuiltinsInstanceDef {
     pub(crate) range_check96: Option<RangeCheckInstanceDef>,
     pub(crate) add_mod: Option<ModInstanceDef>,
     pub(crate) mul_mod: Option<ModInstanceDef>,
+    pub(crate) dojo: Option<DojoInstanceDef>,
 }
 
 impl BuiltinsInstanceDef {
@@ -39,6 +41,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -55,6 +58,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -71,6 +75,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -87,6 +92,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -103,6 +109,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -119,6 +126,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -135,6 +143,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -151,6 +160,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -173,6 +183,7 @@ impl BuiltinsInstanceDef {
             add_mod: None,
             #[cfg(not(feature = "mod_builtin"))]
             mul_mod: None,
+            dojo: Some(DojoInstanceDef::new(Some(8))),
         }
     }
 
@@ -189,6 +200,7 @@ impl BuiltinsInstanceDef {
             range_check96: None,
             add_mod: None,
             mul_mod: None,
+            dojo: None,
         }
     }
 
@@ -211,6 +223,7 @@ impl BuiltinsInstanceDef {
             add_mod: None,
             #[cfg(not(feature = "mod_builtin"))]
             mul_mod: None,
+            dojo: None,
         }
     }
 }

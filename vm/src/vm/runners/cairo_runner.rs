@@ -38,8 +38,9 @@ use crate::{
         security::verify_secure_runner,
         {
             runners::builtin_runner::{
-                BitwiseBuiltinRunner, BuiltinRunner, EcOpBuiltinRunner, HashBuiltinRunner,
-                OutputBuiltinRunner, RangeCheckBuiltinRunner, SignatureBuiltinRunner,
+                BitwiseBuiltinRunner, BuiltinRunner, DojoBuiltinRunner, EcOpBuiltinRunner,
+                HashBuiltinRunner, OutputBuiltinRunner, RangeCheckBuiltinRunner,
+                SignatureBuiltinRunner,
             },
             vm_core::VirtualMachine,
         },
@@ -255,6 +256,7 @@ impl CairoRunner {
             BuiltinName::range_check96,
             BuiltinName::add_mod,
             BuiltinName::mul_mod,
+            BuiltinName::dojo,
         ];
         if !is_subsequence(&self.program.builtins, &builtin_ordered_list) {
             return Err(RunnerError::DisorderedBuiltins);
@@ -372,6 +374,15 @@ impl CairoRunner {
         //     }
         // }
 
+        if let Some(instance_def) = self.layout.builtins.dojo.as_ref() {
+            let included = program_builtins.remove(&BuiltinName::dojo);
+            if included || self.is_proof_mode() {
+                self.vm
+                    .builtin_runners
+                    .push(DojoBuiltinRunner::new(instance_def.ratio, included).into());
+            }
+        }
+
         if !program_builtins.is_empty() && !allow_missing_builtins {
             return Err(RunnerError::NoBuiltinForInstance(Box::new((
                 program_builtins.iter().map(|n| **n).collect(),
@@ -430,6 +441,9 @@ impl CairoRunner {
                     ModBuiltinRunner::new_mul_mod(&ModInstanceDef::new(Some(1), 1, 96), true)
                         .into(),
                 ),
+                BuiltinName::dojo => vm
+                    .builtin_runners
+                    .push(DojoBuiltinRunner::new(Some(8), true).into()),
             }
         }
 
@@ -786,7 +800,8 @@ impl CairoRunner {
             .iter()
             .map(|runner| runner.get_used_perm_range_check_units(&self.vm))
             .sum::<Result<usize, MemoryError>>()
-            .map_err(Into::<VirtualMachineError>::into)?;
+            .map_err(Into::<VirtualMachineError>::into)
+            .unwrap();
 
         let unused_rc_units =
             (self.layout.rc_units as usize - 3) * self.vm.current_step - rc_units_used_by_builtins;
@@ -1085,7 +1100,7 @@ impl CairoRunner {
         for builtin_runner in self.vm.builtin_runners.iter() {
             let (_, size) = builtin_runner
                 .get_used_cells_and_allocated_size(&self.vm)
-                .map_err(RunnerError::FinalizeSegements)?;
+                .map_err(RunnerError::FinalizeSegments)?;
             if let BuiltinRunner::Output(output_builtin) = builtin_runner {
                 let public_memory = output_builtin.get_public_memory(&self.vm.segments)?;
                 self.vm
@@ -1136,11 +1151,10 @@ impl CairoRunner {
     // Returns Ok(()) if there are enough allocated cells for the builtins.
     // If not, the number of steps should be increased or a different layout should be used.
     pub fn check_used_cells(&self) -> Result<(), VirtualMachineError> {
-        self.vm
-            .builtin_runners
-            .iter()
-            .map(|builtin_runner| builtin_runner.get_used_cells_and_allocated_size(&self.vm))
-            .collect::<Result<Vec<(usize, usize)>, MemoryError>>()?;
+        for b in self.vm.builtin_runners.iter() {
+            b.get_used_cells_and_allocated_size(&self.vm)?;
+        }
+
         self.check_range_check_usage()?;
         self.check_memory_usage()?;
         self.check_diluted_check_usage()?;
@@ -1156,7 +1170,8 @@ impl CairoRunner {
             .builtin_runners
             .iter()
             .map(|builtin_runner| builtin_runner.get_allocated_memory_units(&self.vm))
-            .collect::<Result<Vec<usize>, MemoryError>>()?
+            .collect::<Result<Vec<usize>, MemoryError>>()
+            .unwrap()
             .iter()
             .sum();
 
@@ -1170,11 +1185,11 @@ impl CairoRunner {
         let (public_memory_units, rem) =
             div_rem(total_memory_units, instance.public_memory_fraction);
         if rem != 0 {
-            return Err(MathError::SafeDivFailU32(
-                total_memory_units,
-                instance.public_memory_fraction,
+            Result::<(), VirtualMachineError>::Err(
+                MathError::SafeDivFailU32(total_memory_units, instance.public_memory_fraction)
+                    .into(),
             )
-            .into());
+            .unwrap();
         }
 
         let instruction_memory_units = 4 * vm_current_step_u32;

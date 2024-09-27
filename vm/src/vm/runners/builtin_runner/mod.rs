@@ -30,6 +30,7 @@ use crate::vm::vm_memory::memory::Memory;
 use crate::vm::vm_memory::memory_segments::MemorySegmentManager;
 
 mod bitwise;
+mod dojo;
 mod ec_op;
 mod hash;
 mod keccak;
@@ -44,6 +45,7 @@ pub use self::keccak::KeccakBuiltinRunner;
 pub(crate) use self::range_check::{RC_N_PARTS_96, RC_N_PARTS_STANDARD};
 use self::segment_arena::ARENA_BUILTIN_SIZE;
 pub use bitwise::BitwiseBuiltinRunner;
+pub use dojo::DojoBuiltinRunner;
 pub use ec_op::EcOpBuiltinRunner;
 pub use hash::HashBuiltinRunner;
 pub use modulo::ModBuiltinRunner;
@@ -77,6 +79,7 @@ pub enum BuiltinRunner {
     Poseidon(PoseidonBuiltinRunner),
     SegmentArena(SegmentArenaBuiltinRunner),
     Mod(ModBuiltinRunner),
+    Dojo(DojoBuiltinRunner),
 }
 
 impl BuiltinRunner {
@@ -100,6 +103,7 @@ impl BuiltinRunner {
                 segment_arena.initialize_segments(segments)
             }
             BuiltinRunner::Mod(ref mut modulo) => modulo.initialize_segments(segments),
+            BuiltinRunner::Dojo(ref mut dojo) => dojo.initialize_segments(segments),
         }
     }
 
@@ -116,6 +120,7 @@ impl BuiltinRunner {
             BuiltinRunner::Poseidon(ref poseidon) => poseidon.initial_stack(),
             BuiltinRunner::SegmentArena(ref segment_arena) => segment_arena.initial_stack(),
             BuiltinRunner::Mod(ref modulo) => modulo.initial_stack(),
+            BuiltinRunner::Dojo(ref dojo) => dojo.initial_stack(),
         }
     }
 
@@ -216,6 +221,7 @@ impl BuiltinRunner {
             BuiltinRunner::Poseidon(ref poseidon) => poseidon.included,
             BuiltinRunner::SegmentArena(ref segment_arena) => segment_arena.included,
             BuiltinRunner::Mod(ref modulo) => modulo.included,
+            BuiltinRunner::Dojo(ref dojo) => dojo.included,
         }
     }
 
@@ -234,6 +240,7 @@ impl BuiltinRunner {
             //Warning, returns only the segment index, base offset will be 3
             BuiltinRunner::SegmentArena(ref segment_arena) => segment_arena.base(),
             BuiltinRunner::Mod(ref modulo) => modulo.base(),
+            BuiltinRunner::Dojo(ref dojo) => dojo.base(),
         }
     }
 
@@ -249,6 +256,7 @@ impl BuiltinRunner {
             BuiltinRunner::Signature(ref signature) => signature.ratio(),
             BuiltinRunner::Poseidon(poseidon) => poseidon.ratio(),
             BuiltinRunner::Mod(ref modulo) => modulo.ratio(),
+            BuiltinRunner::Dojo(dojo) => dojo.ratio(),
         }
     }
 
@@ -296,6 +304,7 @@ impl BuiltinRunner {
                 segment_arena.get_used_cells(segments)
             }
             BuiltinRunner::Mod(ref modulo) => modulo.get_used_cells(segments),
+            BuiltinRunner::Dojo(ref dojo) => dojo.get_used_cells(segments),
         }
     }
 
@@ -319,6 +328,7 @@ impl BuiltinRunner {
                 segment_arena.get_used_instances(segments)
             }
             BuiltinRunner::Mod(modulo) => modulo.get_used_instances(segments),
+            BuiltinRunner::Dojo(ref dojo) => dojo.get_used_instances(segments),
         }
     }
 
@@ -374,6 +384,7 @@ impl BuiltinRunner {
             BuiltinRunner::Poseidon(_) => CELLS_PER_POSEIDON,
             BuiltinRunner::SegmentArena(_) => ARENA_BUILTIN_SIZE,
             BuiltinRunner::Mod(_) => CELLS_PER_MOD,
+            BuiltinRunner::Dojo(_) => 1,
         }
     }
 
@@ -389,6 +400,7 @@ impl BuiltinRunner {
             BuiltinRunner::Poseidon(_) => INPUT_CELLS_PER_POSEIDON,
             BuiltinRunner::SegmentArena(_) => ARENA_BUILTIN_SIZE,
             BuiltinRunner::Mod(_) => CELLS_PER_MOD,
+            BuiltinRunner::Dojo(_) => 0,
         }
     }
 
@@ -412,6 +424,7 @@ impl BuiltinRunner {
             BuiltinRunner::Poseidon(_) => BuiltinName::poseidon,
             BuiltinRunner::SegmentArena(_) => BuiltinName::segment_arena,
             BuiltinRunner::Mod(b) => b.name(),
+            BuiltinRunner::Dojo(_) => BuiltinName::dojo,
         }
     }
 
@@ -493,7 +506,7 @@ impl BuiltinRunner {
         vm: &VirtualMachine,
     ) -> Result<(usize, usize), MemoryError> {
         match self {
-            BuiltinRunner::Output(_) | BuiltinRunner::SegmentArena(_) => {
+            BuiltinRunner::Output(_) | BuiltinRunner::SegmentArena(_) | BuiltinRunner::Dojo(_) => {
                 let used = self.get_used_cells(&vm.segments)?;
                 Ok((used, used))
             }
@@ -570,6 +583,7 @@ impl BuiltinRunner {
                 segment_arena.stop_ptr = Some(stop_ptr)
             }
             BuiltinRunner::Mod(modulo) => modulo.stop_ptr = Some(stop_ptr),
+            BuiltinRunner::Dojo(dojo) => dojo.stop_ptr = Some(stop_ptr),
         }
     }
 
@@ -586,6 +600,7 @@ impl BuiltinRunner {
             BuiltinRunner::Poseidon(ref poseidon) => poseidon.stop_ptr,
             BuiltinRunner::SegmentArena(ref segment_arena) => segment_arena.stop_ptr,
             BuiltinRunner::Mod(ref modulo) => modulo.stop_ptr,
+            BuiltinRunner::Dojo(ref dojo) => dojo.stop_ptr,
         }
     }
 }
@@ -653,6 +668,12 @@ impl From<SegmentArenaBuiltinRunner> for BuiltinRunner {
 impl From<ModBuiltinRunner> for BuiltinRunner {
     fn from(runner: ModBuiltinRunner) -> Self {
         BuiltinRunner::Mod(runner)
+    }
+}
+
+impl From<DojoBuiltinRunner> for BuiltinRunner {
+    fn from(runner: DojoBuiltinRunner) -> Self {
+        BuiltinRunner::Dojo(runner)
     }
 }
 
