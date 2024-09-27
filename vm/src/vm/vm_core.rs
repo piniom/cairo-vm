@@ -605,11 +605,11 @@ impl VirtualMachine {
         dst_op: &Option<MaybeRelocatable>,
         op0: &MaybeRelocatable,
     ) -> Result<MaybeRelocatable, VirtualMachineError> {
-        dbg!(&instruction);
         let op1_op = match self.deduce_memory_cell(op1_addr).unwrap() {
             None => {
-                let (op1, deduced_res) =
-                    self.deduce_op1(instruction, dst_op.as_ref(), Some(op0.clone())).unwrap();
+                let (op1, deduced_res) = self
+                    .deduce_op1(instruction, dst_op.as_ref(), Some(op0.clone()))
+                    .unwrap();
                 if res.is_none() {
                     *res = deduced_res
                 }
@@ -636,7 +636,8 @@ impl VirtualMachine {
 
         let op1_addr = self
             .run_context
-            .compute_op1_addr(instruction, op0_op.as_ref()).unwrap();
+            .compute_op1_addr(instruction, op0_op.as_ref())
+            .unwrap();
         let op1_op = self.segments.memory.get(&op1_addr).map(Cow::into_owned);
 
         let mut res: Option<MaybeRelocatable> = None;
@@ -648,7 +649,8 @@ impl VirtualMachine {
             Some(op0) => op0,
             None => {
                 deduced_operands.set_op0(true);
-                self.compute_op0_deductions(op0_addr, &mut res, instruction, &dst_op, &op1_op).unwrap()
+                self.compute_op0_deductions(op0_addr, &mut res, instruction, &dst_op, &op1_op)
+                    .unwrap()
             }
         };
 
@@ -657,7 +659,8 @@ impl VirtualMachine {
             Some(op1) => op1,
             None => {
                 deduced_operands.set_op1(true);
-                self.compute_op1_deductions(op1_addr, &mut res, instruction, &dst_op, &op0).unwrap()
+                self.compute_op1_deductions(op1_addr, &mut res, instruction, &dst_op, &op0)
+                    .unwrap()
             }
         };
 

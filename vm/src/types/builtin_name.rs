@@ -16,6 +16,7 @@ const POSEIDON_BUILTIN_NAME: &str = "poseidon";
 const SEGMENT_ARENA_BUILTIN_NAME: &str = "segment_arena";
 const ADD_MOD_BUILTIN_NAME: &str = "add_mod";
 const MUL_MOD_BUILTIN_NAME: &str = "mul_mod";
+const DOJO_BUILTIN_NAME: &str = "dojo";
 
 const OUTPUT_BUILTIN_NAME_WITH_SUFFIX: &str = "output_builtin";
 const HASH_BUILTIN_NAME_WITH_SUFFIX: &str = "pedersen_builtin";
@@ -47,6 +48,7 @@ pub enum BuiltinName {
     range_check96,
     add_mod,
     mul_mod,
+    dojo,
 }
 
 impl BuiltinName {
@@ -75,6 +77,7 @@ impl BuiltinName {
             BuiltinName::range_check96 => RANGE_CHECK_96_BUILTIN_NAME_WITH_SUFFIX,
             BuiltinName::add_mod => ADD_MOD_BUILTIN_NAME_WITH_SUFFIX,
             BuiltinName::mul_mod => MUL_MOD_BUILTIN_NAME_WITH_SUFFIX,
+            BuiltinName::dojo => DOJO_BUILTIN_NAME,
         }
     }
 
@@ -103,6 +106,7 @@ impl BuiltinName {
             BuiltinName::range_check96 => RANGE_CHECK_96_BUILTIN_NAME,
             BuiltinName::add_mod => ADD_MOD_BUILTIN_NAME,
             BuiltinName::mul_mod => MUL_MOD_BUILTIN_NAME,
+            BuiltinName::dojo => "dojo",
         }
     }
 

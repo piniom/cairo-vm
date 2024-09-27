@@ -12,6 +12,7 @@ use cairo_lang_sierra::{
     extensions::{
         bitwise::BitwiseType,
         core::{CoreLibfunc, CoreType},
+        dojo::DojoType,
         ec::EcOpType,
         gas::GasBuiltinType,
         pedersen::PedersenType,
@@ -976,6 +977,7 @@ fn is_implicit_generic_id(generic_ty: &GenericTypeId) -> bool {
         RangeCheckType::ID,
         SegmentArenaType::ID,
         SystemType::ID,
+        DojoType::ID,
     ]
     .contains(generic_ty)
 }

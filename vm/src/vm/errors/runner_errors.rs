@@ -32,7 +32,7 @@ pub enum RunnerError {
     FailedStringConversion,
     #[error("EcOpBuiltin: m should be at most {0}")]
     EcOpBuiltinScalarLimit(Box<Felt252>),
-    #[error("Given builtins are not in appropiate order")]
+    #[error("Given builtins are not in appropriate order")]
     DisorderedBuiltins,
     #[error("Expected integer at address {:?} to be smaller than 2^{}, Got {}", (*.0).0, (*.0).1, (*.0).2)]
     IntegerBiggerThanPowerOfTwo(Box<(Relocatable, u32, Felt252)>),
@@ -49,7 +49,7 @@ pub enum RunnerError {
     #[error("end_run must be called before read_return_values.")]
     ReadReturnValuesNoEndRun,
     #[error("Error while finalizing segments: {0}")]
-    FinalizeSegements(MemoryError),
+    FinalizeSegments(MemoryError),
     #[error("finalize_segments called but proof_mode is not enabled")]
     FinalizeSegmentsNoProofMode,
     #[error("Invalid stop pointer for {}: Stop pointer has value {} but builtin segment is {}", (*.0).0, (*.0).1, (*.0).2)]
